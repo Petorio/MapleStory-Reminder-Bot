@@ -52,7 +52,7 @@ def run():
 
         user_id = interaction.user.id
 
-        logger.info(f"User: {interaction.user} (ID: {user_id}) using {interaction.data["custom_id"]} button")
+        logger.info(f"User: {interaction.user} (ID: {user_id}) using {interaction.data['custom_id']} button")
 
         if interaction.data["custom_id"] == "quit":
             await interaction.response.send_message("Bot has been quit.")
