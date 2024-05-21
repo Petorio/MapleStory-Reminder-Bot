@@ -19,6 +19,7 @@ def run():
 
     @bot.command()
     async def exp(ctx):
+        """ Reminds the user to refresh EXP. """
         buttons = [
             discord.ui.Button(style=discord.ButtonStyle.primary, label="15 minutes", custom_id="15"),
             discord.ui.Button(style=discord.ButtonStyle.primary, label="30 minutes", custom_id="30"),
