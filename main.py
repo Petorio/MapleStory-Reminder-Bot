@@ -1,53 +1,101 @@
-from typing import Final
+import settings
+import discord
+from discord.ext import commands
+import asyncio
 
-import os
-from dotenv import load_dotenv
-from discord import Intents, Client, Message
-from responses import get_response
+logger = settings.logging.getLogger("bot")
 
-load_dotenv()
-TOKEN: Final[str] = os.getenv('DISCORD_TOKEN')
+def run():
+    intents = discord.Intents.default()
+    intents.message_content = True
+    intents.members = True
+    reminder_tasks = {}
 
-intents: Intents = Intents.default()
-intents.message_content = True
-client: Client = Client(command_prefix="r!", intents=intents)
+    bot = commands.Bot(command_prefix='r!', intents=intents)
 
-async def send_message(message: Message, user_message: str) -> None:
-    if not user_message:
-        print("Message was empty because intents were not enabled probably")
-        return
+    @bot.event
+    async def on_ready():
+        logger.info(f"User: {bot.user} (ID: {bot.user.id})")
 
-    if is_private := user_message[0] == '?':
-        user_message = user_message[1:]
+    @bot.command()
+    async def exp(ctx):
+        buttons = [
+            discord.ui.Button(style=discord.ButtonStyle.primary, label="15 minutes", custom_id="15"),
+            discord.ui.Button(style=discord.ButtonStyle.primary, label="30 minutes", custom_id="30"),
+            discord.ui.Button(style=discord.ButtonStyle.primary, label="60 minutes", custom_id="60"),
+            discord.ui.Button(style=discord.ButtonStyle.danger, label="Quit Bot", custom_id="quit")
+        ]
+        view = discord.ui.View()
+        for button in buttons:
+            view.add_item(button)
 
-    try:
-        response: str = get_response(user_message)
-        await message.author.send(response) if is_private else await message.channel.send(response)
-    except Exception as e:
-        print(e)
+        await ctx.author.send("Set a reminder for:", view=view)
 
-@client.event
-async def on_ready() -> None:
-    print(f'{client.user} is now running')
+    async def send_reminder_menu(channel):
+        buttons = [
+            discord.ui.Button(style=discord.ButtonStyle.primary, label="15 minutes", custom_id="15"),
+            discord.ui.Button(style=discord.ButtonStyle.primary, label="30 minutes", custom_id="30"),
+            discord.ui.Button(style=discord.ButtonStyle.primary, label="60 minutes", custom_id="60"),
+            discord.ui.Button(style=discord.ButtonStyle.danger, label="Quit Bot", custom_id="quit")
+        ]
+        view = discord.ui.View()
+        for button in buttons:
+            view.add_item(button)
 
-@client.event
-async def on_message(message: Message) -> None:
-    if message.author == client.user:
-        return
-    
-    username: str = str(message.author)
-    user_message: str = message.content
-    channel: str = str(message.channel)
+        await channel.send("Set a reminder for:", view=view)
 
-    print(f'[{channel}] {username}: "{user_message}"')
-    await send_message(message, user_message)
+    @bot.event
+    async def on_interaction(interaction):
+        if interaction.type != discord.InteractionType.component:
+            return
 
-@client.command
-async def hello(ctx):
-    await ctx.send("Hello")
+        user_id = interaction.user.id
 
-def main() -> None:
-    client.run(token=TOKEN)
+        if interaction.data["custom_id"] == "quit":
+            await interaction.response.send_message("Bot has been quit.")
+            await interaction.message.delete()
+            return
 
-if __name__ == '__main__':
-    main()
+        if interaction.data["custom_id"] == "cancel":
+            if user_id in reminder_tasks:
+                reminder_tasks[user_id].cancel()
+                del reminder_tasks[user_id]
+                await interaction.response.send_message("Reminder canceled.")
+                await send_reminder_menu(interaction.channel)  # Send the reminder menu again after canceling
+                return
+            else:
+                await interaction.message.delete()
+                return
+
+        time_mapping = {
+            "15": 15 * 60,
+            "30": 30 * 60,
+            "60": 60 * 60
+        }
+        wait_time = time_mapping.get(interaction.data["custom_id"], 0)
+
+        # Remove all buttons except cancel after clicking a time button
+        cancel_button = discord.ui.Button(style=discord.ButtonStyle.danger, label="Cancel", custom_id="cancel")
+        view = discord.ui.View()
+        view.add_item(cancel_button)
+        await interaction.response.edit_message(content=f"Reminder set for {interaction.data['custom_id']} minutes. Waiting...", view=view)
+
+        async def reminder_task():
+            try:
+                await asyncio.sleep(wait_time)
+                await interaction.channel.send(f"{interaction.user.mention}, Refresh your EXP!")
+                # Remove the interaction message with buttons
+                await interaction.message.delete()
+                await send_reminder_menu(interaction.channel)  # Send the reminder menu again after reminder
+            except asyncio.CancelledError:
+                await interaction.message.delete()
+
+        # Start the reminder task and store it in the dictionary
+        task = bot.loop.create_task(reminder_task())
+        reminder_tasks[user_id] = task
+
+    bot.run(settings.DISCORD_SECRET, root_logger=True)
+
+
+if __name__ == "__main__":
+    run()
