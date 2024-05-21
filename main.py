@@ -15,7 +15,7 @@ def run():
 
     @bot.event
     async def on_ready():
-        logger.info(f"User: {bot.user} (ID: {bot.user.id})")
+        logger.info(f"Bot: {bot.user} (Bot ID: {bot.user.id})")
 
     @bot.command()
     async def exp(ctx):
@@ -50,6 +50,8 @@ def run():
             return
 
         user_id = interaction.user.id
+
+        logger.info(f"User: {interaction.user} (ID: {user_id}) using {interaction.data["custom_id"]} button")
 
         if interaction.data["custom_id"] == "quit":
             await interaction.response.send_message("Bot has been quit.")
